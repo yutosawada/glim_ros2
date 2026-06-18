@@ -34,6 +34,7 @@
 #include <glim/odometry/async_odometry_estimation.hpp>
 #include <glim/mapping/async_sub_mapping.hpp>
 #include <glim/mapping/async_global_mapping.hpp>
+#include <glim/mapping/global_mapping.hpp>  // issue-22: headless pure-localization map load
 #include <glim_ros/ros_compatibility.hpp>
 #include <glim_ros/ros_qos.hpp>
 
@@ -130,6 +131,25 @@ GlimROS::GlimROS(const rclcpp::NodeOptions& options) : Node("glim_ros", options)
       spdlog::info("load {}", global_mapping_so_name);
       auto global = GlobalMappingBase::load_module(global_mapping_so_name);
       if (global) {
+        // issue-22 (headless pure-localization): if load_map_path is set, load a
+        // saved map dump (graph.txt + submaps) BEFORE async wrapping, so the
+        // first optimize() connects to it. glim has no live load path otherwise
+        // (load() exists only on the concrete GlobalMapping, not the base/async
+        // wrapper). Empty path = stock behaviour (normal mapping).
+        const std::string load_map_path =
+          glim::Config(glim::GlobalConfig::get_config_path("config_global_mapping"))
+            .param<std::string>("global_mapping", "load_map_path", "");
+        if (!load_map_path.empty()) {
+          auto gm = std::dynamic_pointer_cast<glim::GlobalMapping>(global);
+          if (gm) {
+            spdlog::info("pure-localization: loading saved map from {}", load_map_path);
+            if (!gm->load(load_map_path)) {
+              spdlog::error("failed to load saved map from {}", load_map_path);
+            }
+          } else {
+            spdlog::warn("load_map_path is set but the global mapping module is not glim::GlobalMapping");
+          }
+        }
         global_mapping.reset(new AsyncGlobalMapping(global));
       }
     }
