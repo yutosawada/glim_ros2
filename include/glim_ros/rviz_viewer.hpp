@@ -61,6 +61,7 @@ private:
   std::string odom_frame_id;
   std::string map_frame_id;
   bool publish_imu2lidar;
+  bool publish_odom2base;  // issue-22: gate odom->base TF (off when wheel odom owns it, e.g. sim localization)
   double tf_time_offset;
 
   std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> map_pub;

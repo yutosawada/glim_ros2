@@ -28,6 +28,11 @@ RvizViewer::RvizViewer() : logger(create_module_logger("rviz")) {
   odom_frame_id = config.param<std::string>("glim_ros", "odom_frame_id", "odom");
   map_frame_id = config.param<std::string>("glim_ros", "map_frame_id", "map");
   publish_imu2lidar = config.param<bool>("glim_ros", "publish_imu2lidar", true);
+  // issue-22: when false, do NOT publish odom->base (only map->odom + imu->lidar).
+  // Used in sim localization where wheel odometry (amr_state) already owns
+  // odom->base_footprint; GLIM must only supply the map->odom correction.
+  // Defaults true = stock behaviour (GLIM owns the full odom->base->... chain).
+  publish_odom2base = config.param<bool>("glim_ros", "publish_odom2base", true);
   tf_time_offset = config.param<double>("glim_ros", "tf_time_offset", 1e-6);
 
   last_globalmap_pub_time = rclcpp::Clock(rcl_clock_type_t::RCL_ROS_TIME).now();
@@ -189,6 +194,10 @@ void RvizViewer::odometry_new_frame(const EstimationFrame::ConstPtr& new_frame, 
     // Odom -> Base
     geometry_msgs::msg::TransformStamped trans;
     trans.header.stamp = tf_stamp;
+
+    // issue-22: skip odom->base when wheel odom (amr_state) already owns it in
+    // sim localization (publish_odom2base=false); only map->odom is published.
+    if (publish_odom2base) {
     trans.header.frame_id = odom_frame_id;
     trans.child_frame_id = base_frame_id;
 
@@ -226,6 +235,7 @@ void RvizViewer::odometry_new_frame(const EstimationFrame::ConstPtr& new_frame, 
         logger->warn("Failed to lookup transform from {} to {} (stamp={}.{}): {}", imu_frame_id, base_frame_id, stamp.sec, stamp.nanosec, e.what());
       }
     }
+    }  // if (publish_odom2base)
 
     // World -> Odom
     trans.header.frame_id = map_frame_id;
